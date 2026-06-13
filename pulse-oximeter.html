@@ -1,0 +1,1080 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PPG Monitor</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg:       #0a0f0d;
+    --surface:  #111a16;
+    --border:   #1e2e26;
+    --accent:   #00e87a;
+    --accent2:  #00b85e;
+    --danger:   #ff4d6d;
+    --warning:  #ffb830;
+    --text:     #d4e8dc;
+    --muted:    #5a7a66;
+    --grid:     #152019;
+    --ppg:      #00e87a;
+    --spo2clr:  #38bdf8;
+    --hrclr:    #f87171;
+    --mono:     'IBM Plex Mono', monospace;
+    --sans:     'Inter', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 28px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+  }
+
+  .logo svg { flex-shrink: 0; }
+
+  .conn-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s, box-shadow 0.3s;
+  }
+  .dot.connected { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .dot.scanning  { background: var(--warning); box-shadow: 0 0 8px var(--warning); animation: pulse 1s infinite; }
+  .dot.error     { background: var(--danger);  box-shadow: 0 0 8px var(--danger); }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* ── Controls bar ── */
+  .controls {
+    display: flex;
+    gap: 10px;
+    padding: 14px 28px;
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+    flex-wrap: wrap;
+    background: var(--surface);
+  }
+
+  button {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    padding: 8px 18px;
+    border-radius: 4px;
+    border: 1px solid;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-transform: uppercase;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #040d08;
+    border-color: var(--accent);
+  }
+  .btn-primary:hover { background: #1fffa0; border-color: #1fffa0; }
+  .btn-primary:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .btn-danger {
+    background: transparent;
+    color: var(--danger);
+    border-color: var(--danger);
+  }
+  .btn-danger:hover { background: #ff4d6d22; }
+  .btn-danger:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--text);
+    border-color: var(--border);
+  }
+  .btn-secondary:hover { border-color: var(--muted); }
+  .btn-secondary:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .btn-save {
+    background: transparent;
+    color: var(--spo2clr);
+    border-color: var(--spo2clr);
+  }
+  .btn-save:hover { background: #38bdf822; }
+  .btn-save:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .recording-badge {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--danger);
+    letter-spacing: 0.08em;
+  }
+  .recording-badge.active { display: flex; }
+  .rec-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--danger); animation: pulse 1s infinite; }
+
+  .elapsed {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    margin-left: auto;
+  }
+
+  /* ── Vitals row ── */
+  .vitals {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .vital-card {
+    background: var(--surface);
+    padding: 20px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .vital-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .vital-value {
+    font-family: var(--mono);
+    font-size: 48px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--muted);
+    transition: color 0.3s;
+  }
+
+  .vital-value.live-hr  { color: var(--hrclr); }
+  .vital-value.live-spo2 { color: var(--spo2clr); }
+  .vital-value.live-ppg { color: var(--accent); }
+
+  .vital-unit {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* ── Chart area ── */
+  .chart-wrap {
+    flex: 1;
+    padding: 20px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+  }
+
+  .chart-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .chart-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .time-controls {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .time-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 10px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .time-btn.active, .time-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  canvas {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    display: block;
+  }
+
+  #ppgCanvas  { height: 220px; }
+  #hrCanvas   { height: 130px; }
+  #spo2Canvas { height: 130px; }
+
+  .mini-charts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .mini-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+
+  /* ── Log / Config panel ── */
+  .bottom-row {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 1px;
+    background: var(--border);
+    border-top: 1px solid var(--border);
+  }
+
+  .log-panel, .config-panel {
+    background: var(--surface);
+    padding: 16px 20px;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+
+  .panel-title {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  .log-line {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  .log-line .ts { color: var(--border); margin-right: 8px; }
+  .log-line.info .msg  { color: var(--text); }
+  .log-line.ok .msg    { color: var(--accent); }
+  .log-line.warn .msg  { color: var(--warning); }
+  .log-line.error .msg { color: var(--danger); }
+
+  .config-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .cfg-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .cfg-row label { flex: 0 0 120px; }
+
+  .cfg-row select, .cfg-row input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    outline: none;
+  }
+
+  .cfg-row select:focus, .cfg-row input:focus { border-color: var(--accent); }
+
+  /* ── Modal ── */
+  .modal-bg {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-bg.open { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 28px;
+    max-width: 500px;
+    width: 90%;
+  }
+
+  .modal h2 {
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--accent);
+    margin-bottom: 16px;
+    letter-spacing: 0.06em;
+  }
+
+  .modal p {
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.7;
+    margin-bottom: 12px;
+  }
+
+  .modal ul {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    margin: 0 0 16px 16px;
+    line-height: 2;
+  }
+
+  .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  @media (max-width: 700px) {
+    .vitals { grid-template-columns: repeat(3, 1fr); }
+    .vital-value { font-size: 32px; }
+    .mini-charts { grid-template-columns: 1fr; }
+    .bottom-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<header>
+  <div class="logo">
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+      <path d="M11 2 Q14 7 11 11 Q8 15 11 20" stroke="#00e87a" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+      <path d="M6 11 L8.5 7 L11 15 L13.5 9 L16 11" stroke="#00e87a" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    PPG MONITOR
+  </div>
+  <div class="conn-status">
+    <div class="dot" id="statusDot"></div>
+    <span id="statusText">Disconnected</span>
+  </div>
+</header>
+
+<!-- ── CONTROLS ── -->
+<div class="controls">
+  <button class="btn-primary" id="btnConnect">Connect Device</button>
+  <button class="btn-danger"  id="btnDisconnect" disabled>Disconnect</button>
+  <button class="btn-secondary" id="btnRecord" disabled>● Record</button>
+  <button class="btn-secondary" id="btnStopRec" disabled>■ Stop</button>
+  <button class="btn-save" id="btnSaveCSV" disabled>↓ Save CSV</button>
+  <button class="btn-save" id="btnSaveJSON" disabled>↓ Save JSON</button>
+  <button class="btn-secondary" id="btnClear">Clear</button>
+  <button class="btn-secondary" id="btnHelp">? Help</button>
+  <div class="recording-badge" id="recBadge">
+    <div class="rec-dot"></div> REC
+  </div>
+  <div class="elapsed" id="elapsed"></div>
+</div>
+
+<!-- ── VITALS ── -->
+<div class="vitals">
+  <div class="vital-card">
+    <div class="vital-label">Heart Rate</div>
+    <div class="vital-value" id="hrVal">—</div>
+    <div class="vital-unit">bpm</div>
+  </div>
+  <div class="vital-card">
+    <div class="vital-label">SpO₂</div>
+    <div class="vital-value" id="spo2Val">—</div>
+    <div class="vital-unit">%</div>
+  </div>
+  <div class="vital-card">
+    <div class="vital-label">PPG Amplitude</div>
+    <div class="vital-value" id="ppgVal">—</div>
+    <div class="vital-unit">raw</div>
+  </div>
+</div>
+
+<!-- ── CHARTS ── -->
+<div class="chart-wrap">
+  <div class="chart-header">
+    <div class="chart-title">Photoplethysmogram (PPG)</div>
+    <div class="time-controls">
+      <span style="font-family:var(--mono);font-size:11px;color:var(--muted)">window:</span>
+      <button class="time-btn active" data-sec="5">5s</button>
+      <button class="time-btn" data-sec="10">10s</button>
+      <button class="time-btn" data-sec="30">30s</button>
+      <button class="time-btn" data-sec="60">60s</button>
+    </div>
+  </div>
+  <canvas id="ppgCanvas"></canvas>
+
+  <div class="mini-charts">
+    <div>
+      <div class="mini-label">Heart Rate (bpm)</div>
+      <canvas id="hrCanvas"></canvas>
+    </div>
+    <div>
+      <div class="mini-label">SpO₂ (%)</div>
+      <canvas id="spo2Canvas"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ── BOTTOM ROW ── -->
+<div class="bottom-row">
+  <div class="log-panel" id="logPanel">
+    <div class="panel-title">Event Log</div>
+  </div>
+  <div class="config-panel">
+    <div class="panel-title">Device Configuration</div>
+    <div class="config-grid">
+      <div class="cfg-row">
+        <label>Device Profile</label>
+        <select id="cfgProfile">
+          <option value="nonin">Nonin (3230 / 3150)</option>
+          <option value="wellue">Wellue / Viatom</option>
+          <option value="cms50">CMS50 / Berry</option>
+          <option value="contec">Contec</option>
+          <option value="custom">Custom UUIDs</option>
+        </select>
+      </div>
+      <div class="cfg-row" id="rowSvc">
+        <label>Service UUID</label>
+        <input id="cfgSvc" type="text" placeholder="0xXXXX or full UUID">
+      </div>
+      <div class="cfg-row" id="rowChar">
+        <label>Notify Char UUID</label>
+        <input id="cfgChar" type="text" placeholder="0xXXXX or full UUID">
+      </div>
+      <div class="cfg-row">
+        <label>Sample Rate (Hz)</label>
+        <input id="cfgRate" type="number" value="60" min="1" max="500">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── HELP MODAL ── -->
+<div class="modal-bg" id="helpModal">
+  <div class="modal">
+    <h2>PPG Monitor — Setup Guide</h2>
+    <p>This app uses the <strong>Web Bluetooth API</strong> to connect directly to your pulse oximeter from the browser. Requirements:</p>
+    <ul>
+      <li>Chrome or Edge on desktop (Windows / macOS / Linux)</li>
+      <li>Served over HTTPS <em>or</em> localhost</li>
+      <li>Bluetooth enabled on your computer</li>
+    </ul>
+    <p><strong>Select a Device Profile</strong> matching your oximeter brand before connecting. If your device isn't listed, choose <em>Custom UUIDs</em> and enter the BLE service and characteristic UUIDs from your device's documentation or a BLE scanner app (e.g. nRF Connect).</p>
+    <p><strong>Packet Parser:</strong> Each brand encodes its data differently. The parsers here cover the most common formats. If values look wrong, check the browser console — raw bytes are logged there. You can extend <code>PROFILES</code> in the source.</p>
+    <p><strong>Recording:</strong> Click <em>Record</em> to tag data. Use <em>Save CSV</em> or <em>Save JSON</em> to export — both include timestamps, HR, SpO₂, and raw PPG values.</p>
+    <div class="modal-footer">
+      <button class="btn-primary" id="btnCloseHelp">Got it</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  DEVICE PROFILES
+//  Each profile defines the BLE service/characteristic UUIDs and
+//  a parsePacket(dataView) → { hr, spo2, ppg } function.
+//  Returning null means the packet should be ignored.
+// ═══════════════════════════════════════════════════════════════
+const PROFILES = {
+
+  nonin: {
+    name: 'Nonin',
+    service:  '46a970e0-0d5f-11e2-8b5e-0002a5d5c51b',
+    notify:   '0aad7ea0-0d60-11e2-8e3c-0002a5d5c51b',
+    parse(dv) {
+      // Nonin Wrist Oximeter Protocol
+      // Byte 0: status, Byte 1-2: SpO2 (×10), Byte 3-4: HR (×10), Byte 5+: PPG
+      if (dv.byteLength < 6) return null;
+      const status = dv.getUint8(0);
+      if (status & 0x01) return null; // sensor off
+      const spo2 = dv.getUint16(1, false) / 10;
+      const hr   = dv.getUint16(3, false) / 10;
+      const ppg  = dv.getUint8(5);
+      return { hr, spo2, ppg };
+    }
+  },
+
+  wellue: {
+    name: 'Wellue / Viatom',
+    service:  '14839ac4-7d7e-415c-9a42-167340cf2339',
+    notify:   '8b00ace7-eb0b-49b0-bbe9-9aee0a26e1a3',
+    parse(dv) {
+      // Viatom protocol: packets start with 0xAA
+      if (dv.byteLength < 6 || dv.getUint8(0) !== 0xAA) return null;
+      const hr   = dv.getUint8(1);
+      const spo2 = dv.getUint8(2);
+      const ppg  = dv.getUint16(3, true);
+      return { hr, spo2, ppg };
+    }
+  },
+
+  cms50: {
+    name: 'CMS50 / Berry',
+    service:  '0000fff0-0000-1000-8000-00805f9b34fb',
+    notify:   '0000fff4-0000-1000-8000-00805f9b34fb',
+    parse(dv) {
+      // CMS50 5-byte frame: B0=sync, B1=signal strength/SpO2, B2=HR, B3=PPG, B4=flags
+      if (dv.byteLength < 5) return null;
+      const b0 = dv.getUint8(0);
+      const b1 = dv.getUint8(1);
+      const b2 = dv.getUint8(2);
+      const b3 = dv.getUint8(3);
+      if ((b0 & 0x80) === 0) return null; // not a valid frame start
+      const spo2 = b1 & 0x7F;
+      const hr   = ((b0 & 0x40) << 1) | b2;
+      const ppg  = b3;
+      return { hr, spo2, ppg };
+    }
+  },
+
+  contec: {
+    name: 'Contec',
+    service:  '0000ff12-0000-1000-8000-00805f9b34fb',
+    notify:   '0000ff01-0000-1000-8000-00805f9b34fb',
+    parse(dv) {
+      if (dv.byteLength < 4) return null;
+      const spo2 = dv.getUint8(0);
+      const hr   = dv.getUint8(1);
+      const ppg  = dv.getUint16(2, true);
+      return { hr, spo2, ppg };
+    }
+  },
+
+  custom: {
+    name: 'Custom',
+    service:  '',
+    notify:   '',
+    parse(dv) {
+      // Generic: just grab first 3 bytes as hr, spo2, ppg
+      if (dv.byteLength < 1) return null;
+      const ppg  = dv.getUint8(0);
+      const hr   = dv.byteLength > 1 ? dv.getUint8(1) : null;
+      const spo2 = dv.byteLength > 2 ? dv.getUint8(2) : null;
+      return { hr, spo2, ppg };
+    }
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════════
+let btDevice = null, btChar = null;
+let isRecording = false, recStartTime = null;
+const MAX_POINTS = 10000;
+const data = { ts: [], hr: [], spo2: [], ppg: [] };   // live ring buffer
+const recorded = [];                                    // recording buffer
+let windowSec = 5;
+let sampleRate = 60;
+let elapsedTimer = null;
+let lastHR = null, lastSpO2 = null;
+
+// ═══════════════════════════════════════════════════════════════
+//  CANVAS SETUP
+// ═══════════════════════════════════════════════════════════════
+const ppgCanvas  = document.getElementById('ppgCanvas');
+const hrCanvas   = document.getElementById('hrCanvas');
+const spo2Canvas = document.getElementById('spo2Canvas');
+
+function resizeCanvas(c) {
+  const rect = c.getBoundingClientRect();
+  c.width  = rect.width  * devicePixelRatio;
+  c.height = rect.height * devicePixelRatio;
+}
+
+function initCanvases() {
+  [ppgCanvas, hrCanvas, spo2Canvas].forEach(resizeCanvas);
+  drawAll();
+}
+
+window.addEventListener('resize', initCanvases);
+setTimeout(initCanvases, 100);
+
+// ═══════════════════════════════════════════════════════════════
+//  DRAWING
+// ═══════════════════════════════════════════════════════════════
+function getStyle(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+function drawChart(canvas, series, color, opts = {}) {
+  const ctx  = canvas.getContext('2d');
+  const W    = canvas.width;
+  const H    = canvas.height;
+  const dpr  = devicePixelRatio;
+  ctx.clearRect(0, 0, W, H);
+
+  // background
+  ctx.fillStyle = getStyle('--surface');
+  ctx.fillRect(0, 0, W, H);
+
+  // grid lines
+  const gridColor = getStyle('--grid');
+  ctx.strokeStyle = gridColor;
+  ctx.lineWidth = 1;
+  for (let i = 1; i < 5; i++) {
+    const y = (H / 5) * i;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+
+  if (!series || series.length < 2) return;
+
+  // determine window
+  const now = Date.now();
+  const windowMs = windowSec * 1000;
+  const cutoff = now - windowMs;
+
+  // filter to window
+  const pts = [];
+  const tsArr = data.ts;
+  for (let i = tsArr.length - 1; i >= 0; i--) {
+    if (tsArr[i] < cutoff) break;
+    pts.unshift({ t: tsArr[i], v: series[i] });
+  }
+  if (pts.length < 2) return;
+
+  // compute range
+  let min = Infinity, max = -Infinity;
+  for (const p of pts) {
+    if (p.v == null) continue;
+    if (p.v < min) min = p.v;
+    if (p.v > max) max = p.v;
+  }
+  if (opts.yMin !== undefined) min = opts.yMin;
+  if (opts.yMax !== undefined) max = opts.yMax;
+  const range = max - min || 1;
+  const pad = range * 0.1;
+
+  // axis labels
+  ctx.fillStyle = getStyle('--muted');
+  ctx.font = `${10 * dpr}px IBM Plex Mono, monospace`;
+  ctx.textAlign = 'right';
+  ctx.fillText((max + pad * 0.5).toFixed(opts.decimals ?? 0), W - 4, 14 * dpr);
+  ctx.fillText((min - pad * 0.5).toFixed(opts.decimals ?? 0), W - 4, H - 4);
+
+  // signal line
+  ctx.beginPath();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = opts.lineWidth ?? (1.5 * dpr);
+  ctx.lineJoin = 'round';
+  ctx.lineCap  = 'round';
+
+  let first = true;
+  for (const p of pts) {
+    if (p.v == null) { first = true; continue; }
+    const x = ((p.t - cutoff) / windowMs) * W;
+    const y = H - ((p.v - (min - pad)) / (range + pad * 2)) * H;
+    if (first) { ctx.moveTo(x, y); first = false; }
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // glow fill
+  if (opts.fill) {
+    const gradient = ctx.createLinearGradient(0, 0, 0, H);
+    gradient.addColorStop(0, color + '55');
+    gradient.addColorStop(1, color + '00');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    first = true;
+    for (const p of pts) {
+      if (p.v == null) continue;
+      const x = ((p.t - cutoff) / windowMs) * W;
+      const y = H - ((p.v - (min - pad)) / (range + pad * 2)) * H;
+      if (first) { ctx.moveTo(x, H); ctx.lineTo(x, y); first = false; }
+      else ctx.lineTo(x, y);
+    }
+    ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+  }
+}
+
+function drawAll() {
+  drawChart(ppgCanvas,  data.ppg,  getStyle('--ppg'),    { fill: true, lineWidth: 2 * devicePixelRatio });
+  drawChart(hrCanvas,   data.hr,   getStyle('--hrclr'),  { yMin: 30, yMax: 200 });
+  drawChart(spo2Canvas, data.spo2, getStyle('--spo2clr'),{ yMin: 80, yMax: 100, decimals: 0 });
+}
+
+let rafId;
+function renderLoop() {
+  drawAll();
+  rafId = requestAnimationFrame(renderLoop);
+}
+renderLoop();
+
+// ═══════════════════════════════════════════════════════════════
+//  LOG
+// ═══════════════════════════════════════════════════════════════
+function log(msg, level = 'info') {
+  const panel = document.getElementById('logPanel');
+  const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+  const line = document.createElement('div');
+  line.className = `log-line ${level}`;
+  line.innerHTML = `<span class="ts">${ts}</span><span class="msg">${msg}</span>`;
+  panel.appendChild(line);
+  panel.scrollTop = panel.scrollHeight;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PROFILE CONFIG UI
+// ═══════════════════════════════════════════════════════════════
+const cfgProfile = document.getElementById('cfgProfile');
+const cfgSvc     = document.getElementById('cfgSvc');
+const cfgChar    = document.getElementById('cfgChar');
+const cfgRate    = document.getElementById('cfgRate');
+
+function applyProfile(key) {
+  const p = PROFILES[key];
+  if (!p) return;
+  if (key !== 'custom') {
+    cfgSvc.value  = p.service;
+    cfgChar.value = p.notify;
+    cfgSvc.disabled  = true;
+    cfgChar.disabled = true;
+  } else {
+    cfgSvc.value  = '';
+    cfgChar.value = '';
+    cfgSvc.disabled  = false;
+    cfgChar.disabled = false;
+  }
+}
+
+cfgProfile.addEventListener('change', () => applyProfile(cfgProfile.value));
+applyProfile(cfgProfile.value);
+
+// ═══════════════════════════════════════════════════════════════
+//  BLUETOOTH
+// ═══════════════════════════════════════════════════════════════
+function getActiveProfile() {
+  const key = cfgProfile.value;
+  const p   = PROFILES[key];
+  const svc  = cfgSvc.value.trim()  || p.service;
+  const char = cfgChar.value.trim() || p.notify;
+  sampleRate = parseInt(cfgRate.value) || 60;
+  return { ...p, service: svc, notify: char };
+}
+
+function setStatus(state, text) {
+  document.getElementById('statusDot').className  = `dot ${state}`;
+  document.getElementById('statusText').textContent = text;
+}
+
+async function connect() {
+  if (!navigator.bluetooth) {
+    log('Web Bluetooth not available. Use Chrome/Edge on desktop.', 'error');
+    alert('Web Bluetooth is not available.\nPlease use Chrome or Edge on desktop, served from HTTPS or localhost.');
+    return;
+  }
+
+  const profile = getActiveProfile();
+  if (!profile.service || !profile.notify) {
+    log('Please enter Service and Characteristic UUIDs.', 'warn');
+    return;
+  }
+
+  setStatus('scanning', 'Scanning…');
+  log(`Requesting BLE device [${profile.name}]…`);
+
+  try {
+    btDevice = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [profile.service]
+    });
+    log(`Found: ${btDevice.name || btDevice.id}`, 'ok');
+    btDevice.addEventListener('gattserverdisconnected', onDisconnected);
+
+    const server  = await btDevice.gatt.connect();
+    const service = await server.getPrimaryService(profile.service);
+    btChar         = await service.getCharacteristic(profile.notify);
+
+    btChar.addEventListener('characteristicvaluechanged', (e) => handlePacket(e.target.value, profile));
+    await btChar.startNotifications();
+
+    setStatus('connected', btDevice.name || 'Connected');
+    log(`Connected — notifications active`, 'ok');
+
+    document.getElementById('btnConnect').disabled    = true;
+    document.getElementById('btnDisconnect').disabled = false;
+    document.getElementById('btnRecord').disabled     = false;
+
+  } catch (err) {
+    setStatus('error', 'Error');
+    log(`Connection failed: ${err.message}`, 'error');
+    btDevice = null; btChar = null;
+  }
+}
+
+function onDisconnected() {
+  setStatus('error', 'Disconnected');
+  log('Device disconnected', 'warn');
+  if (isRecording) stopRecording();
+  document.getElementById('btnConnect').disabled    = false;
+  document.getElementById('btnDisconnect').disabled = true;
+  document.getElementById('btnRecord').disabled     = true;
+  document.getElementById('btnStopRec').disabled    = true;
+  btDevice = null; btChar = null;
+}
+
+async function disconnect() {
+  if (btDevice?.gatt?.connected) {
+    await btDevice.gatt.disconnect();
+  }
+  onDisconnected();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PACKET HANDLER
+// ═══════════════════════════════════════════════════════════════
+function handlePacket(dataView, profile) {
+  // Log raw bytes to console for debugging
+  const raw = Array.from(new Uint8Array(dataView.buffer)).map(b => b.toString(16).padStart(2,'0')).join(' ');
+  console.debug('[PPG raw]', raw);
+
+  const parsed = profile.parse(dataView);
+  if (!parsed) return;
+
+  const ts = Date.now();
+  const { hr, spo2, ppg } = parsed;
+
+  // push to ring buffer
+  data.ts.push(ts);
+  data.hr.push(hr ?? lastHR);
+  data.spo2.push(spo2 ?? lastSpO2);
+  data.ppg.push(ppg);
+
+  if (hr   != null) lastHR   = hr;
+  if (spo2 != null) lastSpO2 = spo2;
+
+  // trim old data
+  if (data.ts.length > MAX_POINTS) {
+    data.ts.splice(0, 1);
+    data.hr.splice(0, 1);
+    data.spo2.splice(0, 1);
+    data.ppg.splice(0, 1);
+  }
+
+  // update vitals display
+  const hrEl   = document.getElementById('hrVal');
+  const spo2El = document.getElementById('spo2Val');
+  const ppgEl  = document.getElementById('ppgVal');
+
+  if (hr != null && hr > 0 && hr < 300) {
+    hrEl.textContent = Math.round(hr);
+    hrEl.className   = 'vital-value live-hr';
+  }
+  if (spo2 != null && spo2 > 50 && spo2 <= 100) {
+    spo2El.textContent = Math.round(spo2);
+    spo2El.className   = 'vital-value live-spo2';
+  }
+  if (ppg != null) {
+    ppgEl.textContent = ppg;
+    ppgEl.className   = 'vital-value live-ppg';
+  }
+
+  // record
+  if (isRecording) {
+    recorded.push({ ts, hr: hr ?? lastHR, spo2: spo2 ?? lastSpO2, ppg });
+    document.getElementById('btnSaveCSV').disabled  = false;
+    document.getElementById('btnSaveJSON').disabled = false;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  RECORDING
+// ═══════════════════════════════════════════════════════════════
+function startRecording() {
+  isRecording = true;
+  recStartTime = Date.now();
+  recorded.length = 0;
+  document.getElementById('btnRecord').disabled  = true;
+  document.getElementById('btnStopRec').disabled = false;
+  document.getElementById('recBadge').classList.add('active');
+  log('Recording started', 'ok');
+
+  elapsedTimer = setInterval(() => {
+    const sec = ((Date.now() - recStartTime) / 1000).toFixed(1);
+    document.getElementById('elapsed').textContent = `${sec}s recorded`;
+  }, 100);
+}
+
+function stopRecording() {
+  isRecording = false;
+  clearInterval(elapsedTimer);
+  document.getElementById('btnRecord').disabled  = false;
+  document.getElementById('btnStopRec').disabled = true;
+  document.getElementById('recBadge').classList.remove('active');
+  log(`Recording stopped — ${recorded.length} samples`, 'ok');
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  SAVE
+// ═══════════════════════════════════════════════════════════════
+function saveCSV() {
+  if (!recorded.length) return;
+  const rows = ['timestamp_ms,datetime,hr_bpm,spo2_pct,ppg_raw'];
+  for (const r of recorded) {
+    const dt = new Date(r.ts).toISOString();
+    rows.push(`${r.ts},${dt},${r.hr ?? ''},${r.spo2 ?? ''},${r.ppg ?? ''}`);
+  }
+  download('ppg_recording.csv', rows.join('\n'), 'text/csv');
+  log('CSV saved', 'ok');
+}
+
+function saveJSON() {
+  if (!recorded.length) return;
+  const out = {
+    device: btDevice?.name || 'Unknown',
+    profile: cfgProfile.options[cfgProfile.selectedIndex].text,
+    startTime: new Date(recorded[0].ts).toISOString(),
+    endTime:   new Date(recorded[recorded.length - 1].ts).toISOString(),
+    sampleCount: recorded.length,
+    samples: recorded
+  };
+  download('ppg_recording.json', JSON.stringify(out, null, 2), 'application/json');
+  log('JSON saved', 'ok');
+}
+
+function download(name, content, type) {
+  const blob = new Blob([content], { type });
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(blob),
+    download: name
+  });
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CLEAR
+// ═══════════════════════════════════════════════════════════════
+function clearData() {
+  data.ts.length = data.hr.length = data.spo2.length = data.ppg.length = 0;
+  document.getElementById('hrVal').textContent   = '—';
+  document.getElementById('spo2Val').textContent = '—';
+  document.getElementById('ppgVal').textContent  = '—';
+  ['hrVal','spo2Val','ppgVal'].forEach(id =>
+    document.getElementById(id).className = 'vital-value');
+  log('Display cleared');
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  WIRE UP BUTTONS
+// ═══════════════════════════════════════════════════════════════
+document.getElementById('btnConnect').addEventListener('click', connect);
+document.getElementById('btnDisconnect').addEventListener('click', disconnect);
+document.getElementById('btnRecord').addEventListener('click', startRecording);
+document.getElementById('btnStopRec').addEventListener('click', stopRecording);
+document.getElementById('btnSaveCSV').addEventListener('click', saveCSV);
+document.getElementById('btnSaveJSON').addEventListener('click', saveJSON);
+document.getElementById('btnClear').addEventListener('click', clearData);
+document.getElementById('btnHelp').addEventListener('click', () =>
+  document.getElementById('helpModal').classList.add('open'));
+document.getElementById('btnCloseHelp').addEventListener('click', () =>
+  document.getElementById('helpModal').classList.remove('open'));
+
+document.querySelectorAll('.time-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    windowSec = parseInt(btn.dataset.sec);
+  });
+});
+
+log('PPG Monitor ready. Select a device profile and click Connect.', 'ok');
+log('Requires Chrome/Edge on desktop over HTTPS or localhost.', 'info');
+
+// ═══════════════════════════════════════════════════════════════
+//  DEMO MODE — inject synthetic PPG if no device (dev/testing)
+// ═══════════════════════════════════════════════════════════════
+const urlParams = new URLSearchParams(location.search);
+if (urlParams.get('demo') === '1') {
+  log('DEMO MODE active (add ?demo=1 to URL to use)', 'warn');
+  let phase = 0;
+  setInterval(() => {
+    phase += (2 * Math.PI) / 60;
+    const ppg  = Math.round(128 + 80 * Math.sin(phase) + 10 * Math.sin(phase * 4));
+    const hr   = 72 + Math.round(3 * Math.sin(phase / 10));
+    const spo2 = 98 + (Math.random() < 0.1 ? -1 : 0);
+    handlePacket((() => {
+      const buf = new ArrayBuffer(3);
+      const dv  = new DataView(buf);
+      dv.setUint8(0, ppg & 0xFF);
+      dv.setUint8(1, hr);
+      dv.setUint8(2, spo2);
+      return dv;
+    })(), { parse: (dv) => ({
+      ppg:  dv.getUint8(0),
+      hr:   dv.getUint8(1),
+      spo2: dv.getUint8(2)
+    })});
+  }, 1000 / 60);
+
+  document.getElementById('btnSaveCSV').disabled  = false;
+  document.getElementById('btnSaveJSON').disabled = false;
+  document.getElementById('btnRecord').disabled   = false;
+}
+</script>
+</body>
+</html>
